@@ -1,0 +1,4 @@
+# requirements.yml
+collections:
+  - name: community.general
+    version: 13.0.1

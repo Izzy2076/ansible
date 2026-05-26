@@ -28,6 +28,8 @@ id_rsa*
 # Fichiers de retry spécifiques et caches locaux
 .ansible_cache/
 .ansible/
+.ansible_collections/
+.collections/
 
 # ==========================================
 # Gestion des dépendances (Optionnel mais recommandé)

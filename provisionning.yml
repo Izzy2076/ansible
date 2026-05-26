@@ -1,10 +1,11 @@
 ---
-- name: "PROVISIONING : Création des conteneurs Incus"
+- name: "PROVISIONING : Création de l'infrastructure 3 tiers avec Incus"
   hosts: localhost
   connection: local
   gather_facts: no
   vars:
-    # Liste des conteneurs à créer pour l'architecture 3 tiers
+    ssh_pub_key: "{{ lookup('env', 'HOME') }}/.ssh/id_rsa_ansible_lab.pub"
+    ssh_priv_key: "{{ lookup('env', 'HOME') }}/.ssh/id_rsa_ansible_lab"
     instances:
       - { name: 'waf-01', profile: 'default' }
       - { name: "web-01", profile: "default" }
@@ -14,63 +15,59 @@
       - { name: "db-01",  profile: "default" }
 
   tasks:
-    - name: "1. Création et démarrage des conteneurs Debian 12"
+    - name: "1. Création des conteneurs"
       command: "incus launch images:debian/12 {{ item.name }} -p {{ item.profile }}"
       loop: "{{ instances }}"
-      register: incus_launch_result
-      # Évite de planter si les conteneurs sont déjà créés (Idempotence)
+      register: incus_launch
+      changed_when: "'creating' in incus_launch.stdout"
       failed_when:
-        - incus_launch_result.rc != 0
-        - "'already exists' not in incus_launch_result.stderr"
-      changed_when: "'creating' in incus_launch_result.stdout"
+        - incus_launch.rc != 0
+        - "'already exists' not in incus_launch.stderr"
 
-    - name: "2. Attente que les conteneurs récupèrent une IP"
-      pause:
-        seconds: 10
+    - name: "2. Attente des IPs"
+      shell: "incus list {{ item.name }} --format csv -c 4"
+      register: incus_status
+      until: "incus_status.stdout | length > 0"
+      retries: 15
+      delay: 5
+      loop: "{{ instances }}"
+      changed_when: false
 
-    - name: "3. Création du dossier SSH et injection de la clé publique"
+    - name: "3. Préparation environnement (Python + SSH)"
       shell: |
+        incus exec {{ item.name }} -- apt-get update -qq
+        incus exec {{ item.name }} -- apt-get install -y python3 python3-apt openssh-server -qq
         incus exec {{ item.name }} -- mkdir -p /root/.ssh
         incus exec {{ item.name }} -- chmod 700 /root/.ssh
-        incus file push ~/.ssh/id_rsa_ansible_lab.pub {{ item.name }}/root/.ssh/authorized_keys
-        incus exec {{ item.name }} -- chmod 600 /root/.ssh/authorized_keys
-        incus exec {{ item.name }} -- chown -R root:root /root/.ssh
       loop: "{{ instances }}"
-      # On force changed_when à true temporairement pour être SÛR que ça s'exécute
-      changed_when: true
+      changed_when: false
 
-    - name: "4. BOOTSTRAP : Configuration SSH et installation Python3"
+    - name: "4. Injection de la clé SSH"
       shell: |
-        incus exec {{ item.name }} -- apt-get update
-        incus exec {{ item.name }} -- apt-get install -y python3 python3-apt openssh-server
-        # On force SSH à accepter le login root par clé publique
+        incus file push {{ ssh_pub_key }} {{ item.name }}/root/.ssh/authorized_keys
+        incus exec {{ item.name }} -- chmod 600 /root/.ssh/authorized_keys
+        incus exec {{ item.name }} -- chown root:root /root/.ssh/authorized_keys
         incus exec {{ item.name }} -- sed -i 's/#PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
         incus exec {{ item.name }} -- systemctl restart ssh
       loop: "{{ instances }}"
-      changed_when: true
+      changed_when: false
 
-    - name: "5. Récupération des IPs depuis Incus"
-      shell: "incus list {{ item.name }} -c 4 --format csv | awk '{print $1}' | grep -E '^[0-9]'"
+    - name: "5. Vérification que le service SSH est actif"
+      shell: "incus exec {{ item.name }} -- systemctl is-active ssh"
+      register: ssh_check
+      until: ssh_check.stdout == 'active'
+      retries: 5
+      delay: 3
+      loop: "{{ instances }}"
+      changed_when: false
+
+    - name: "6. Récupération IPs"
+      shell: "incus list {{ item.name }} -c 4 --format csv | awk '{print $1}'"
       loop: "{{ instances }}"
       register: incus_ips
       changed_when: false
 
-    - name: "6. Ajout dynamique des hôtes dans la mémoire d'Ansible"
-      add_host:
-        name: "{{ item.item.name }}"
-        ansible_host: "{{ item.stdout }}"
-        ansible_user: root
-        ansible_ssh_private_key_file: "~/.ssh/id_rsa_ansible_lab"
-        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
-        groups: >-
-          {% if 'waf' in item.item.name %}waf_servers
-          {% elif 'web' in item.item.name %}apache_servers
-          {% elif 'app' in item.item.name %}jboss_servers
-          {% elif 'db' in item.item.name %}dbservers
-          {% endif %}
-      loop: "{{ incus_ips.results }}"
-
-    - name: "7. INDUSTRIALISATION : Régénération de l'inventaire production.ini parfait"
+    - name: "7. Industrialisation : Génération inventaire"
       copy:
         dest: "{{ playbook_dir }}/inventory/production.ini"
         content: |
@@ -96,5 +93,5 @@
 
           [all:vars]
           ansible_user=root
-          ansible_ssh_private_key_file=~/.ssh/id_rsa_ansible_lab
+          ansible_ssh_private_key_file={{ ssh_priv_key }}
           ansible_ssh_common_args='-o StrictHostKeyChecking=no'
