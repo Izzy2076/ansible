@@ -4,7 +4,7 @@
   connection: local
   gather_facts: no
   vars:
-    instances: ["web-01", "web-02", "app-01", "app-02", "db-01"]
+    instances: ["waf-01", "web-01", "web-02", "app-01", "app-02", "db-01"]
 
   tasks:
     - name: "Suppression forcée des conteneurs Incus"

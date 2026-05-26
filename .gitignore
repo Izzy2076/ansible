@@ -1,6 +1,11 @@
 # ==========================================
 # Sécurité : NE JAMAIS POUSSER CES FICHIERS
 # ==========================================
+
+# --- Secrets & Vault ---
+.vault_pass
+*.vault
+
 # Clés privées SSH (spécifiques à ton lab)
 *.key
 *_id_rsa

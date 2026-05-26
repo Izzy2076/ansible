@@ -21,7 +21,7 @@ jboss_db_host: "10.253.190.254"      # L'IP réelle de ton conteneur db-01
 jboss_db_port: 3306                  # Port par défaut de MariaDB/MySQL
 jboss_db_name: "mon_app_db"          # Le nom de la base de données que JBoss va chercher
 jboss_db_user: "jboss_user"          # L'utilisateur de la base de données
-jboss_db_password: "MonPasswordSecurise123!" # Le mot de passe associé
+
 
 # Configuration optionnelle du pool de connexions
 jboss_pool_min: 5
