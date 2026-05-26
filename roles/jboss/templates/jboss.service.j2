@@ -1,0 +1,17 @@
+[Unit]
+Description=JBoss WildFly Application Server
+After=network.target
+
+[Service]
+Type=simple
+User=jboss
+Group=jboss
+Environment=LAUNCH_JBOSS_IN_BACKGROUND=true
+ExecStart=/opt/jboss/bin/standalone.sh -b 0.0.0.0
+ExecStop=/opt/jboss/bin/jboss-cli.sh --connect command=:shutdown
+PidFile=/var/run/jboss/jboss.pid
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

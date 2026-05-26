@@ -1,0 +1,3 @@
+---
+- import_playbook: provisionning.yml # Exécute le script ci-dessus (crée les VMs + inventaire)
+- import_playbook: site.yml      # Lance tes tiers (Apache, JBoss, MariaDB) sur les hôtes créés

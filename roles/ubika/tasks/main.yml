@@ -1,0 +1,19 @@
+---
+- name: "Mise à jour dynamique du pool de serveurs dans le WAF Ubika"
+  uri:
+    url: "https://mon-waf-ubika.local/api/v1/configuration/pools/apache_pool"
+    method: PUT
+    user: "admin_ansible"
+    password: "{{ ubika_api_password | default('MonMotDePasseSecurise') }}"
+    force_basic_auth: yes
+    status_code: [200, 404]
+    body_format: json
+    body:
+      backends: >-
+        [
+        {% for host in groups['apache_servers'] %}
+          { "ip": "{{ hostvars[host]['ansible_host'] }}", "port": 80 }{% if not loop.last %},{% endif %}
+        {% endfor %}
+        ]
+  delegate_to: localhost
+  ignore_errors: true

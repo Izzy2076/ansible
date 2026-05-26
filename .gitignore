@@ -1,0 +1,41 @@
+# ==========================================
+# Sécurité : NE JAMAIS POUSSER CES FICHIERS
+# ==========================================
+# Clés privées SSH (spécifiques à ton lab)
+*.key
+*_id_rsa
+id_rsa*
+.ssh/
+
+# Fichiers de configuration contenant des tokens ou secrets locaux
+.wslconfig
+*.env
+
+# ==========================================
+# Fichiers temporaires et logs d'Ansible
+# ==========================================
+# Fichiers créés par Ansible en cas d'échec d'un playbook
+*.retry
+
+# Logs d'exécution d'Ansible
+*.log
+
+# Fichiers de retry spécifiques et caches locaux
+.ansible_cache/
+.ansible/
+
+# ==========================================
+# Gestion des dépendances (Optionnel mais recommandé)
+# ==========================================
+# Si tu télécharges des rôles ou collections externes via ansible-galaxy,
+# il vaut mieux les ignorer et garder uniquement ton fichier "requirements.yml"
+# galaxy_roles/
+# collections/
+
+# ==========================================
+# Système et éditeurs de code
+# ==========================================
+.history/
+.vscode/
+.idea/
+.DS_Store

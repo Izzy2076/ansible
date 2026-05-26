@@ -1,0 +1,14 @@
+# Fichier de configuration Zabbix Agent - Généré par Ansible
+PidFile=/var/run/zabbix/zabbix_agentd.pid
+LogFile=/var/log/zabbix/zabbix_agentd.log
+LogFileSize=0
+
+### --- CONFIGURATION RESEAU ---
+# Adresse du serveur Zabbix qui va interroger cet agent (Actif / Passif)
+Server={{ zabbix_server_ip | default('127.0.0.1') }}
+ServerActive={{ zabbix_server_ip | default('127.0.0.1') }}
+
+# Le nom de l'hôte tel qu'il apparaîtra dans l'interface Zabbix
+Hostname={{ inventory_hostname }}
+
+Include=/etc/zabbix/zabbix_agentd.d/*.conf

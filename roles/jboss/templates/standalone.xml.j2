@@ -1,0 +1,64 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<server xmlns="urn:jboss:domain:16.0">
+    <extensions>
+        <extension module="org.jboss.as.clustering.infinispan"/>
+        <extension module="org.jboss.as.connector"/>
+        <extension module="org.jboss.as.ee"/>
+        <extension module="org.jboss.as.ejb3"/>
+        <extension module="org.jboss.as.jaxrs"/>
+        <extension module="org.jboss.as.jmx"/>
+        <extension module="org.jboss.as.logging"/>
+        <extension module="org.jboss.as.naming"/>
+        <extension module="org.jboss.as.remoting"/>
+        <extension module="org.jboss.as.server"/>
+        <extension module="urn:jboss:domain:undertow:12.0"/>
+    </extensions>
+
+    <profile>
+        <subsystem xmlns="urn:jboss:domain:logging:8.0">
+            <console-handler name="CONSOLE">
+                <level name="{{ jboss_log_level | default('INFO') }}"/>
+                <formatter>
+                    <named-formatter name="COLOR-PATTERN"/>
+                </formatter>
+            </console-handler>
+        </subsystem>
+
+        <subsystem xmlns="urn:jboss:domain:connector:6.0">
+            <datasources>
+                <datasource jndi-name="java:jboss/datasources/{{ jboss_db_name }}" pool-name="{{ jboss_db_name }}Pool" enabled="true" use-java-context="true">
+                    <connection-url>jdbc:postgresql://{{ jboss_db_host }}:{{ jboss_db_port }}/{{ jboss_db_name }}</connection-url>
+                    <driver>postgresql</driver>
+                    <security>
+                        <user-name>{{ jboss_db_user }}</user-name>
+                        <password>{{ jboss_db_password }}</password>
+                    </security>
+                    <pool>
+                        <min-pool-size>{{ jboss_pool_min | default(5) }}</min-pool-size>
+                        <max-pool-size>{{ jboss_pool_max | default(20) }}</max-pool-size>
+                    </pool>
+                </datasource>
+                <drivers>
+                    <driver name="postgresql" module="org.postgresql">
+                        <xa-datasource-class>org.postgresql.xa.PGXADataSource</xa-datasource-class>
+                    </driver>
+                </drivers>
+            </datasources>
+        </subsystem>
+    </profile>
+
+    <interfaces>
+        <interface name="management">
+            <inet-address value="${jboss.bind.address.management:{{ jboss_management_bind_ip | default('127.0.0.1') }}}"/>
+        </interface>
+        <interface name="public">
+            <inet-address value="${jboss.bind.address:{{ jboss_public_bind_ip | default('0.0.0.0') }}}"/>
+        </interface>
+    </interfaces>
+
+    <socket-binding-group name="standard-sockets" default-interface="public" port-offset="${jboss.socket.binding.port-offset:{{ jboss_port_offset | default(0) }}}">
+        <socket-binding name="management-http" interface="management" port="${jboss.management.http.port:9990}"/>
+        <socket-binding name="http" port="${jboss.http.port:8080}"/>
+        <socket-binding name="https" port="${jboss.https.port:8443}"/>
+    </socket-binding-group>
+</server>

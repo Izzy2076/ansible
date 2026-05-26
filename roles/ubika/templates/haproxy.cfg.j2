@@ -1,0 +1,11 @@
+frontend http_front
+    bind *:80
+    stats uri /haproxy?stats  # Interface de stats pour tes tests
+    default_backend apache_cluster
+
+backend apache_cluster
+    balance roundrobin
+    option httpchk HEAD /
+{% for host in groups['apache_servers'] %}
+    server {{ host }} {{ hostvars[host]['ansible_host'] }}:80 check
+{% endfor %}

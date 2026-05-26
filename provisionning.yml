@@ -1,0 +1,100 @@
+---
+- name: "PROVISIONING : Création des conteneurs Incus"
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    # Liste des conteneurs à créer pour l'architecture 3 tiers
+    instances:
+      - { name: 'waf-01', profile: 'default' }
+      - { name: "web-01", profile: "default" }
+      - { name: "web-02", profile: "default" }
+      - { name: "app-01", profile: "default" }
+      - { name: "app-02", profile: "default" }
+      - { name: "db-01",  profile: "default" }
+
+  tasks:
+    - name: "1. Création et démarrage des conteneurs Debian 12"
+      command: "incus launch images:debian/12 {{ item.name }} -p {{ item.profile }}"
+      loop: "{{ instances }}"
+      register: incus_launch_result
+      # Évite de planter si les conteneurs sont déjà créés (Idempotence)
+      failed_when:
+        - incus_launch_result.rc != 0
+        - "'already exists' not in incus_launch_result.stderr"
+      changed_when: "'creating' in incus_launch_result.stdout"
+
+    - name: "2. Attente que les conteneurs récupèrent une IP"
+      pause:
+        seconds: 10
+
+    - name: "3. Création du dossier SSH et injection de la clé publique"
+      shell: |
+        incus exec {{ item.name }} -- mkdir -p /root/.ssh
+        incus exec {{ item.name }} -- chmod 700 /root/.ssh
+        incus file push ~/.ssh/id_rsa_ansible_lab.pub {{ item.name }}/root/.ssh/authorized_keys
+        incus exec {{ item.name }} -- chmod 600 /root/.ssh/authorized_keys
+        incus exec {{ item.name }} -- chown -R root:root /root/.ssh
+      loop: "{{ instances }}"
+      # On force changed_when à true temporairement pour être SÛR que ça s'exécute
+      changed_when: true
+
+    - name: "4. BOOTSTRAP : Configuration SSH et installation Python3"
+      shell: |
+        incus exec {{ item.name }} -- apt-get update
+        incus exec {{ item.name }} -- apt-get install -y python3 python3-apt openssh-server
+        # On force SSH à accepter le login root par clé publique
+        incus exec {{ item.name }} -- sed -i 's/#PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+        incus exec {{ item.name }} -- systemctl restart ssh
+      loop: "{{ instances }}"
+      changed_when: true
+
+    - name: "5. Récupération des IPs depuis Incus"
+      shell: "incus list {{ item.name }} -c 4 --format csv | awk '{print $1}' | grep -E '^[0-9]'"
+      loop: "{{ instances }}"
+      register: incus_ips
+      changed_when: false
+
+    - name: "6. Ajout dynamique des hôtes dans la mémoire d'Ansible"
+      add_host:
+        name: "{{ item.item.name }}"
+        ansible_host: "{{ item.stdout }}"
+        ansible_user: root
+        ansible_ssh_private_key_file: "~/.ssh/id_rsa_ansible_lab"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+        groups: >-
+          {% if 'waf' in item.item.name %}waf_servers
+          {% elif 'web' in item.item.name %}apache_servers
+          {% elif 'app' in item.item.name %}jboss_servers
+          {% elif 'db' in item.item.name %}dbservers
+          {% endif %}
+      loop: "{{ incus_ips.results }}"
+
+    - name: "7. INDUSTRIALISATION : Régénération de l'inventaire production.ini parfait"
+      copy:
+        dest: "{{ playbook_dir }}/inventory/production.ini"
+        content: |
+          [waf_servers]
+          {% for item in incus_ips.results if 'waf' in item.item.name %}
+          {{ item.item.name }} ansible_host={{ item.stdout }}
+          {% endfor %}
+
+          [apache_servers]
+          {% for item in incus_ips.results if 'web' in item.item.name %}
+          {{ item.item.name }} ansible_host={{ item.stdout }}
+          {% endfor %}
+
+          [jboss_servers]
+          {% for item in incus_ips.results if 'app' in item.item.name %}
+          {{ item.item.name }} ansible_host={{ item.stdout }}
+          {% endfor %}
+
+          [dbservers]
+          {% for item in incus_ips.results if 'db' in item.item.name %}
+          {{ item.item.name }} ansible_host={{ item.stdout }}
+          {% endfor %}
+
+          [all:vars]
+          ansible_user=root
+          ansible_ssh_private_key_file=~/.ssh/id_rsa_ansible_lab
+          ansible_ssh_common_args='-o StrictHostKeyChecking=no'

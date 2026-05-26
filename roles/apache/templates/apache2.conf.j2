@@ -1,0 +1,51 @@
+# Config Debian MCO
+ServerName localhost
+DefaultRuntimeDir ${APACHE_RUN_DIR}
+PidFile ${APACHE_PID_FILE}
+Timeout 300
+KeepAlive On
+MaxKeepAliveRequests 100
+KeepAliveTimeout 5
+
+User ${APACHE_RUN_USER}
+Group ${APACHE_RUN_GROUP}
+
+HostnameLookups Off
+ErrorLog ${APACHE_LOG_DIR}/error.log
+LogLevel warn
+
+# --- MODULES ---
+IncludeOptional mods-enabled/*.load
+IncludeOptional mods-enabled/*.conf
+
+# --- RESEAU ---
+Include ports.conf
+
+# --- SECURITE ET ACCES ---
+
+# 1. On interdit tout par défaut au niveau de la racine système
+<Directory />
+    AllowOverride None
+    Require all denied
+</Directory>
+
+# 2. On autorise explicitement l'accès au web
+# Note : On met le chemin exact sans slash final pour couvrir le dossier
+DocumentRoot "/var/www/html"
+
+<Directory /var/www/html>
+    Options Indexes FollowSymLinks
+    AllowOverride None
+    Require all granted
+</Directory>
+
+# --- LOGIQUE DE CHARGEMENT ---
+AccessFileName .htaccess
+
+# On commente ou supprime ces lignes pour éviter que Debian ne recharge 
+# des fichiers qui bloquent l'accès (comme security.conf ou 000-default.conf)
+# IncludeOptional conf-enabled/*.conf
+# IncludeOptional sites-enabled/*.conf
+
+ProxyPass / http://10.253.190.110:8080/
+ProxyPassReverse / http://10.253.190.110:8080/

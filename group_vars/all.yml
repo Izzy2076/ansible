@@ -1,0 +1,29 @@
+---
+ansible_user: root
+ansible_become: no
+ansible_python_interpreter: /usr/bin/python3
+# On garde les variables applicatives
+apache_listen_port: 80
+apache_package_name: apache2
+apache_service_name: apache2
+# IP de ton serveur de monitoring Zabbix central
+zabbix_server_ip: "192.168.1.50"
+
+# --- CONFIGURATION MARIADB (TIER 3) ---
+mariadb_bind_address: "0.0.0.0"
+
+# --- CONFIGURATION JBOSS (TIER 2) ---
+jboss_log_level: "INFO"
+jboss_port_offset: 0
+
+# C'est ici que l'on définit les variables qui manquaient à ton template :
+jboss_db_host: "10.253.190.254"      # L'IP réelle de ton conteneur db-01
+jboss_db_port: 3306                  # Port par défaut de MariaDB/MySQL
+jboss_db_name: "mon_app_db"          # Le nom de la base de données que JBoss va chercher
+jboss_db_user: "jboss_user"          # L'utilisateur de la base de données
+jboss_db_password: "MonPasswordSecurise123!" # Le mot de passe associé
+
+# Configuration optionnelle du pool de connexions
+jboss_pool_min: 5
+jboss_pool_max: 20
+

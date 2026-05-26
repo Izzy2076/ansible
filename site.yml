@@ -1,0 +1,30 @@
+---
+- name: "TIER 1 : Serveurs Web (Frontal)"
+  hosts: apache_servers
+  become: yes
+  roles:
+    - apache
+    - zabbix-agent
+
+- name: "TIER 2 : Serveurs d'Application (Métier)"
+  hosts: jboss_servers
+  become: yes
+  roles:
+    - jboss
+    - zabbix-agent
+
+- name: "TIER 3 : Serveur de Base de Données (Data)"
+  hosts: dbservers
+  become: yes
+  roles:
+    - mariadb
+    - zabbix-agent
+
+# ==========================================
+# TIER SECURITY : Pare-feu Applicatif (WAF)
+# ==========================================
+- name: "DÉPLOIEMENT : Configuration du WAF Ubika"
+  hosts: localhost # C'est localhost (ton WSL) qui va envoyer la requête API
+  gather_facts: no
+  roles:
+    - ubika
