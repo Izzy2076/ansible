@@ -30,6 +30,7 @@ id_rsa_*
 .ansible_cache/
 .ansible/
 .ansible_collections/
+ansible_collections/
 .collections/
 *.retry
 *.pic
