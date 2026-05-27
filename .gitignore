@@ -9,8 +9,9 @@
 # Clés privées SSH (spécifiques à ton lab)
 *.key
 *_id_rsa
-id_rsa*
+id_rsa_*
 .ssh/
+*.pub
 
 # Fichiers de configuration contenant des tokens ou secrets locaux
 .wslconfig
@@ -30,14 +31,12 @@ id_rsa*
 .ansible/
 .ansible_collections/
 .collections/
+*.retry
+*.pic
 
-# ==========================================
-# Gestion des dépendances (Optionnel mais recommandé)
-# ==========================================
-# Si tu télécharges des rôles ou collections externes via ansible-galaxy,
-# il vaut mieux les ignorer et garder uniquement ton fichier "requirements.yml"
-# galaxy_roles/
-# collections/
+# Ignore tout le contenu du dossier inventory, sauf le dossier lui-même
+inventory/*
+!inventory/.keep
 
 # ==========================================
 # Système et éditeurs de code

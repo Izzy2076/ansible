@@ -1,19 +1,33 @@
 ---
-- name: "Mise à jour dynamique du pool de serveurs dans le WAF Ubika"
-  uri:
-    url: "https://mon-waf-ubika.local/api/v1/configuration/pools/apache_pool"
-    method: PUT
-    user: "admin_ansible"
-    password: "{{ ubika_api_password | default('MonMotDePasseSecurise') }}"
-    force_basic_auth: yes
-    status_code: [200, 404]
-    body_format: json
-    body:
-      backends: >-
-        [
-        {% for host in groups['apache_servers'] %}
-          { "ip": "{{ hostvars[host]['ansible_host'] }}", "port": 80 }{% if not loop.last %},{% endif %}
-        {% endfor %}
-        ]
-  delegate_to: localhost
-  ignore_errors: true
+# 1. Installation
+- name: "Installation de HAProxy"
+  ansible.builtin.apt:
+    name: haproxy
+    state: present
+    update_cache: true
+  become: true
+  tags:
+    - install
+
+# 2. Configuration
+- name: "Configuration de HAProxy"
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  notify: "Restart haproxy"
+  tags:
+    - config
+
+# 3. Démarrage du service
+- name: "Démarrage de HAProxy"
+  ansible.builtin.systemd_service:
+    name: haproxy
+    state: started
+    enabled: true
+  become: true
+  tags:
+    - service

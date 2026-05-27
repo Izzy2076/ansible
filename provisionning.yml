@@ -2,21 +2,21 @@
 - name: "PROVISIONING : Création de l'infrastructure 3 tiers avec Incus"
   hosts: localhost
   connection: local
-  gather_facts: no
+  gather_facts: false
   vars:
     ssh_pub_key: "{{ lookup('env', 'HOME') }}/.ssh/id_rsa_ansible_lab.pub"
     ssh_priv_key: "{{ lookup('env', 'HOME') }}/.ssh/id_rsa_ansible_lab"
     instances:
       - { name: 'waf-01', profile: 'default' }
-      - { name: "web-01", profile: "default" }
-      - { name: "web-02", profile: "default" }
-      - { name: "app-01", profile: "default" }
-      - { name: "app-02", profile: "default" }
-      - { name: "db-01",  profile: "default" }
+      - { name: 'web-01', profile: 'default' }
+      - { name: 'web-02', profile: 'default' }
+      - { name: 'app-01', profile: 'default' }
+      - { name: 'app-02', profile: 'default' }
+      - { name: 'db-01', profile: 'default' }
 
   tasks:
     - name: "1. Création des conteneurs"
-      command: "incus launch images:debian/12 {{ item.name }} -p {{ item.profile }}"
+      ansible.builtin.command: "incus launch images:debian/12 {{ item.name }} -p {{ item.profile }}"
       loop: "{{ instances }}"
       register: incus_launch
       changed_when: "'creating' in incus_launch.stdout"
@@ -25,35 +25,30 @@
         - "'already exists' not in incus_launch.stderr"
 
     - name: "2. Attente des IPs"
-      shell: "incus list {{ item.name }} --format csv -c 4"
+      ansible.builtin.shell: "incus list {{ item.name }} --format csv -c 4"
       register: incus_status
-      until: "incus_status.stdout | length > 0"
+      until: incus_status.stdout | length > 0
       retries: 15
       delay: 5
       loop: "{{ instances }}"
       changed_when: false
 
     - name: "3. Préparation environnement (Python + SSH)"
-      shell: |
-        incus exec {{ item.name }} -- apt-get update -qq
-        incus exec {{ item.name }} -- apt-get install -y python3 python3-apt openssh-server -qq
-        incus exec {{ item.name }} -- mkdir -p /root/.ssh
-        incus exec {{ item.name }} -- chmod 700 /root/.ssh
+      ansible.builtin.command: "incus exec {{ item.name }} -- apt-get update && apt-get install -y python3 python3-apt openssh-server"
       loop: "{{ instances }}"
       changed_when: false
 
     - name: "4. Injection de la clé SSH"
-      shell: |
+      ansible.builtin.shell: |
         incus file push {{ ssh_pub_key }} {{ item.name }}/root/.ssh/authorized_keys
         incus exec {{ item.name }} -- chmod 600 /root/.ssh/authorized_keys
-        incus exec {{ item.name }} -- chown root:root /root/.ssh/authorized_keys
         incus exec {{ item.name }} -- sed -i 's/#PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
         incus exec {{ item.name }} -- systemctl restart ssh
       loop: "{{ instances }}"
       changed_when: false
 
     - name: "5. Vérification que le service SSH est actif"
-      shell: "incus exec {{ item.name }} -- systemctl is-active ssh"
+      ansible.builtin.command: "incus exec {{ item.name }} -- systemctl is-active ssh"
       register: ssh_check
       until: ssh_check.stdout == 'active'
       retries: 5
@@ -62,34 +57,37 @@
       changed_when: false
 
     - name: "6. Récupération IPs"
-      shell: "incus list {{ item.name }} -c 4 --format csv | awk '{print $1}'"
+      ansible.builtin.shell: "incus list {{ item.name }} -c 4 --format csv | awk '{print $1}'"
       loop: "{{ instances }}"
       register: incus_ips
       changed_when: false
 
-    - name: "7. Industrialisation : Génération inventaire"
-      copy:
+    - name: "7. Ajout dynamique des hôtes en mémoire"
+      ansible.builtin.add_host:
+        name: "{{ item.item.name }}"
+        groups: "{{ 'waf_servers' if 'waf' in item.item.name else 'apache_servers' if 'web' in item.item.name else 'jboss_servers' if 'app' in item.item.name else 'dbservers' }}"
+        ansible_host: "{{ item.stdout }}"
+        ansible_user: root
+        ansible_ssh_private_key_file: "{{ ssh_priv_key }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+      loop: "{{ incus_ips.results }}"
+
+    - name: "8. Industrialisation : Génération inventaire physique"
+      ansible.builtin.copy:
         dest: "{{ playbook_dir }}/inventory/production.ini"
+        mode: '0644'
         content: |
           [waf_servers]
-          {% for item in incus_ips.results if 'waf' in item.item.name %}
-          {{ item.item.name }} ansible_host={{ item.stdout }}
-          {% endfor %}
+          {% for item in incus_ips.results if 'waf' in item.item.name %}{{ item.item.name }} ansible_host={{ item.stdout }}{% endfor %}
 
           [apache_servers]
-          {% for item in incus_ips.results if 'web' in item.item.name %}
-          {{ item.item.name }} ansible_host={{ item.stdout }}
-          {% endfor %}
+          {% for item in incus_ips.results if 'web' in item.item.name %}{{ item.item.name }} ansible_host={{ item.stdout }}{% endfor %}
 
           [jboss_servers]
-          {% for item in incus_ips.results if 'app' in item.item.name %}
-          {{ item.item.name }} ansible_host={{ item.stdout }}
-          {% endfor %}
+          {% for item in incus_ips.results if 'app' in item.item.name %}{{ item.item.name }} ansible_host={{ item.stdout }}{% endfor %}
 
           [dbservers]
-          {% for item in incus_ips.results if 'db' in item.item.name %}
-          {{ item.item.name }} ansible_host={{ item.stdout }}
-          {% endfor %}
+          {% for item in incus_ips.results if 'db' in item.item.name %}{{ item.item.name }} ansible_host={{ item.stdout }}{% endfor %}
 
           [all:vars]
           ansible_user=root

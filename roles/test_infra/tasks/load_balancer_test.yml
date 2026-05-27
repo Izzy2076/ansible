@@ -1,0 +1,12 @@
+- name: "Test de répartition de charge"
+  shell: |
+    > /tmp/test_log
+    for i in {1..20}; do
+      curl -sI http://localhost/ | grep "X-Served-By" >> /tmp/test_log;
+    done
+    # Vérifie que les deux serveurs sont bien présents
+    grep -q "app-01" /tmp/test_log && grep -q "app-02" /tmp/test_log
+  register: balance_test
+  changed_when: false
+  # DEBUG : On affiche le contenu du log en cas d'erreur
+  failed_when: balance_test.rc != 0

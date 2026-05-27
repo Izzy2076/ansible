@@ -6,12 +6,15 @@ After=network.target
 Type=simple
 User=jboss
 Group=jboss
-Environment=LAUNCH_JBOSS_IN_BACKGROUND=true
-ExecStart=/opt/jboss/bin/standalone.sh -b 0.0.0.0
+# On supprime le security manager qui bloque tout
+# On utilise --server-config=standalone.xml pour être explicite
+ExecStart=/opt/jboss/bin/standalone.sh -b 0.0.0.0 -bmanagement 0.0.0.0 --server-config=standalone.xml
+# On utilise le script de shutdown standard
 ExecStop=/opt/jboss/bin/jboss-cli.sh --connect command=:shutdown
-PidFile=/var/run/jboss/jboss.pid
-Restart=always
+# On simplifie le démarrage
+Restart=on-failure
 RestartSec=10
+WorkingDirectory=/opt/jboss
 
 [Install]
 WantedBy=multi-user.target

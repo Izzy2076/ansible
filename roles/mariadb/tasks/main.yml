@@ -1,24 +1,108 @@
 ---
+# 1. Installation des dépendances système
+- name: "Installation du driver Python pour MariaDB"
+  ansible.builtin.apt:
+    name: python3-pymysql
+    state: present
+    update_cache: true
+  tags:
+    - mariadb
+    - install
+
+- name: "Installer ufw sur db-01"
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+  tags:
+    - mariadb
+    - install
+
 - name: "Installation de MariaDB Server"
-  apt:
+  ansible.builtin.apt:
     name: mariadb-server
     state: present
-    update_cache: yes
-  tags: [mariadb, install]
+  tags:
+    - mariadb
+    - install
 
+# 2. Configuration et démarrage
 - name: "Configuration de MariaDB (server.cnf)"
-  template:
+  ansible.builtin.template:
     src: server.cnf.j2
     dest: /etc/mysql/mariadb.conf.d/50-server.cnf
     owner: root
     group: root
     mode: '0644'
-  notify: restart mariadb
-  tags: [mariadb, config]
+  notify: "Restart mariadb"
+  tags:
+    - mariadb
+    - config
+
+- name: "Forcer bind-address à 0.0.0.0 dans la config"
+  ansible.builtin.lineinfile:
+    path: /etc/mysql/mariadb.conf.d/50-server.cnf
+    regexp: '^bind-address\s*='
+    line: "bind-address = 0.0.0.0"
+  notify: "Restart mariadb"
+  tags:
+    - mariadb
+    - config
 
 - name: "Démarrage et activation du service MariaDB"
-  service:
+  ansible.builtin.systemd_service:
     name: mariadb
     state: started
-    enabled: yes
-  tags: [mariadb, service]
+    enabled: true
+  tags:
+    - mariadb
+    - service
+
+- name: "Autoriser le port 3306 sur db-01"
+  community.general.ufw:
+    rule: allow
+    port: '3306'
+    proto: tcp
+  tags:
+    - mariadb
+    - config
+
+# 3. Authentification pour permettre à Ansible de gérer les droits
+- name: "Créer le fichier .my.cnf pour root"
+  ansible.builtin.copy:
+    dest: /root/.my.cnf
+    content: |
+      [client]
+      user=root
+      password={{ mariadb_root_db_password }}
+    mode: '0600'
+  tags:
+    - mariadb
+    - config
+
+- name: "Forcer l'authentification par mot de passe pour root"
+  ansible.builtin.shell: >
+    mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING PASSWORD('{{ mariadb_root_db_password }}'); FLUSH PRIVILEGES;"
+  changed_when: false
+  tags:
+    - mariadb
+    - config
+
+# 4. Création de la base et de l'utilisateur
+- name: "Créer la base de données de l'application"
+  community.mysql.mysql_db:
+    name: "{{ mariadb_db_name }}"
+    state: present
+  tags:
+    - mariadb
+    - config
+
+- name: "Créer l'utilisateur MariaDB pour JBoss"
+  community.mysql.mysql_user:
+    name: "{{ mariadb_db_user }}"
+    password: "{{ mariadb_db_password }}"
+    priv: "{{ mariadb_db_name }}.*:ALL"
+    host: '%'
+    state: present
+  tags:
+    - mariadb
+    - config

@@ -1,24 +1,30 @@
 ---
 - name: "Installation de Zabbix Agent"
-  apt:
+  ansible.builtin.apt:
     name: zabbix-agent
     state: present
-    update_cache: yes
-  tags: [zabbix, install]
+    update_cache: true
+  tags:
+    - zabbix
+    - install
 
 - name: "Configuration de Zabbix Agent"
-  template:
+  ansible.builtin.template:
     src: zabbix_agentd.conf.j2
     dest: /etc/zabbix/zabbix_agentd.conf
     owner: root
     group: root
     mode: '0644'
-  notify: restart zabbix-agent
-  tags: [zabbix, config]
+  notify: "Restart zabbix-agent"
+  tags:
+    - zabbix
+    - config
 
 - name: "Démarrage et activation du service Zabbix Agent"
-  service:
+  ansible.builtin.systemd_service:
     name: zabbix-agent
     state: started
-    enabled: yes
-  tags: [zabbix, service]
+    enabled: true
+  tags:
+    - zabbix
+    - service

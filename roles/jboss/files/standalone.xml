@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<server xmlns="urn:jboss:domain:16.0">
+    <extensions>
+        <extension module="org.jboss.as.logging"/>
+        <extension module="org.jboss.as.naming"/>
+        <extension module="org.jboss.as.remoting"/>
+        <extension module="org.jboss.as.server"/>
+        <extension module="org.jboss.as.transactions"/>
+        <extension module="org.wildfly.extension.undertow"/>
+    </extensions>
+    <management/>
+    <profile>
+        <subsystem xmlns="urn:jboss:domain:logging:8.0">
+            <console-handler name="CONSOLE"><level name="INFO"/><formatter><named-formatter name="COLOR-PATTERN"/></formatter></console-handler>
+            <root-logger><level name="INFO"/><handlers><handler name="CONSOLE"/></handlers></root-logger>
+        </subsystem>
+        <subsystem xmlns="urn:jboss:domain:naming:2.0"/>
+    </profile>
+    <interfaces>
+        <interface name="public"><inet-address value="0.0.0.0"/></interface>
+    </interfaces>
+    <socket-binding-group name="standard-sockets" default-interface="public">
+        <socket-binding name="http" port="8080"/>
+    </socket-binding-group>
+</server>

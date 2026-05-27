@@ -17,7 +17,7 @@ jboss_log_level: "INFO"
 jboss_port_offset: 0
 
 # C'est ici que l'on définit les variables qui manquaient à ton template :
-jboss_db_host: "10.253.190.254"      # L'IP réelle de ton conteneur db-01
+jboss_db_host: "db-01"
 jboss_db_port: 3306                  # Port par défaut de MariaDB/MySQL
 jboss_db_name: "mon_app_db"          # Le nom de la base de données que JBoss va chercher
 jboss_db_user: "jboss_user"          # L'utilisateur de la base de données

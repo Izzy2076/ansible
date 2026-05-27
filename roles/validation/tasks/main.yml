@@ -1,0 +1,30 @@
+---
+- name: "Vérification : La base de données répond"
+  wait_for:
+    host: "{{ hostvars['db-01']['ansible_host'] }}"
+    port: 3306
+    timeout: 20  # Augmenté à 20s pour laisser MariaDB démarrer
+  delegate_to: app-01
+  ignore_errors: no
+
+- name: "Vérification : JBoss est joignable"
+  uri:
+    # On utilise hostvars pour récupérer l'IP dynamique de app-01
+    url: "http://{{ hostvars['app-01']['ansible_host'] }}:8080"
+    status_code: 200
+  delegate_to: app-01
+  register: result
+  until: result.status == 200
+  retries: 5
+  delay: 5
+
+- name: "Vérification : Le WAF/Load Balancer répond"
+  uri:
+    # On utilise hostvars pour récupérer l'IP dynamique de waf-01
+    url: "http://{{ hostvars['waf-01']['ansible_host'] }}:80"
+    status_code: 200
+  delegate_to: localhost
+  register: result
+  until: result.status == 200
+  retries: 5
+  delay: 5

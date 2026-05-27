@@ -1,89 +1,118 @@
 ---
-- name: "Installation des prérequis (Java OpenJDK et wget)"
-  apt:
-    name: 
+- name: "Installation des prérequis"
+  ansible.builtin.apt:
+    name:
       - openjdk-17-jdk
       - wget
+      - tar
+      - gzip
     state: present
-    update_cache: yes
+    update_cache: true
   tags: [jboss, install]
-
 - name: "Création du groupe jboss"
-  group:
+  ansible.builtin.group:
     name: jboss
     state: present
   tags: [jboss, system]
-
 - name: "Création de l'utilisateur jboss"
-  user:
+  ansible.builtin.user:
     name: jboss
     group: jboss
     home: /opt/jboss
-    shell: /bin/false
+    shell: /usr/sbin/nologin
+    create_home: true
   tags: [jboss, system]
-
-# --- AJOUT : Téléchargement et extraction de JBoss (WildFly) ---
-- name: "Téléchargement de JBoss / WildFly"
-  get_url:
-    url: "https://github.com/wildfly/wildfly/releases/download/31.0.1.Final/wildfly-31.0.1.Final.tar.gz" # Version stable à jour
+- name: "Téléchargement de l'archive WildFly"
+  ansible.builtin.get_url:
+    url: "https://github.com/wildfly/wildfly/releases/download/31.0.1.Final/wildfly-31.0.1.Final.tar.gz"
     dest: /tmp/wildfly.tar.gz
     mode: '0644'
   tags: [jboss, download]
-
-- name: "Création du répertoire /opt/jboss s'il n'existe pas"
-  file:
-    path: /opt/jboss
+- name: "Extraction de WildFly"
+  ansible.builtin.unarchive:
+    src: /tmp/wildfly.tar.gz
+    dest: /opt/jboss
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    owner: jboss
+    group: jboss
+    creates: /opt/jboss/bin/standalone.sh
+  tags: [jboss, download]
+- name: "Nettoyer les options Java Security Manager dans standalone.conf"
+  ansible.builtin.lineinfile:
+    path: /opt/jboss/bin/standalone.conf
+    regexp: '.*-Djava.security.manager.*'
+    state: absent
+  tags: [jboss, config]
+- name: "Création du fichier d'unité systemd"
+  ansible.builtin.template:
+    src: jboss.service.j2
+    dest: /etc/systemd/system/jboss.service
+    mode: '0644'
+  tags: [jboss, service]
+- name: "Démarrage du service"
+  ansible.builtin.systemd:
+    name: jboss
+    state: started
+    enabled: true
+    daemon_reload: true
+  tags: [jboss, service]
+- name: "Attendre que WildFly soit prêt (port 9990)"
+  ansible.builtin.wait_for:
+    port: 9990
+    delay: 10
+    timeout: 120
+  tags: [jboss, config]
+- name: "Création du répertoire pour le module MariaDB"
+  ansible.builtin.file:
+    path: /opt/jboss/modules/org/mariadb/main/
     state: directory
     owner: jboss
     group: jboss
     mode: '0755'
-  tags: [jboss, download]
-
-- name: "Extraction de JBoss"
-  unarchive:
-    src: /tmp/wildfly.tar.gz
-    dest: /opt/jboss
-    remote_src: yes
-    extra_opts: [--strip-components=1] # Permet de ne pas avoir de sous-dossier avec le numéro de version
-    owner: jboss
-    group: jboss
-    creates: /opt/jboss/standalone/configuration # Ne s'exécute pas si le dossier existe déjà
-  tags: [jboss, download]
-# ----------------------------------------------------------------
-
-# ... (garder le début avec le téléchargement, l'extraction et le standalone.xml)
-
-- name: "Déploiement de la configuration standalone.xml"
-  template:
-    src: standalone.xml.j2
-    dest: /opt/jboss/standalone/configuration/standalone.xml
-    owner: jboss
-    group: jboss
-    mode: '0640'
-  notify: restart jboss
   tags: [jboss, config]
-
-# --- AJOUT : Configuration du service Systemd ---
-- name: "Création du fichier d'unité systemd pour JBoss"
-  template:
-    src: jboss.service.j2
-    dest: /etc/systemd/system/jboss.service
-    owner: root
-    group: root
+- name: "Installation du driver JDBC MariaDB"
+  ansible.builtin.copy:
+    src: mariadb.jar
+    dest: /opt/jboss/modules/org/mariadb/main/mariadb.jar
+    owner: jboss
+    group: jboss
     mode: '0644'
-  register: jboss_service_updated
-  tags: [jboss, service]
-
-- name: "Rechargement de systemd si le fichier de service a changé"
-  systemd:
-    daemon_reload: yes
-  when: jboss_service_updated.changed
-  tags: [jboss, service]
-# ------------------------------------------------
-
-- name: "Démarrage et activation du service JBoss"
-  service:
-    name: jboss
-    state: started
-    enabled: yes
-  tags: [jboss, service]
+  tags: [jboss, config]
+- name: "Copie du descripteur module.xml pour MariaDB"
+  ansible.builtin.copy:
+    src: module_mariadb.xml
+    dest: /opt/jboss/modules/org/mariadb/main/module.xml
+    owner: jboss
+    group: jboss
+    mode: '0644'
+  tags: [jboss, config]
+- name: "Déclaration du driver MariaDB à JBoss"
+  become: true
+  become_user: jboss
+  ansible.builtin.command: /opt/jboss/bin/jboss-cli.sh --connect --command="/subsystem=datasources/jdbc-driver=mariadb:add(driver-name=mariadb,driver-module-name=org.mariadb,driver-xa-datasource-class-name=org.mariadb.jdbc.MariaDbDataSource)"
+  register: jboss_driver_result
+  failed_when:
+    - jboss_driver_result.rc != 0
+    - "'Duplicate resource' not in jboss_driver_result.stdout"
+  changed_when: jboss_driver_result.rc == 0
+  tags: [jboss, config]
+- name: "Configuration de la DataSource via JBoss-CLI (MariaDB)"
+  become: true
+  become_user: jboss
+  ansible.builtin.command: >-
+    /opt/jboss/bin/jboss-cli.sh --connect --command="data-source add
+    --name={{ jboss_db_name }}Pool
+    --jndi-name=java:jboss/datasources/{{ jboss_db_name }}
+    --driver-name=mariadb
+    --connection-url=jdbc:mariadb://{{ jboss_db_host }}:3306/{{ jboss_db_name }}
+    --user-name={{ jboss_db_user }}
+    --password={{ jboss_db_password }}
+    --enabled=true"
+  register: jboss_datasource_result
+  failed_when:
+    - jboss_datasource_result.rc != 0
+    - "'Duplicate resource' not in jboss_datasource_result.stdout"
+  changed_when: jboss_datasource_result.rc == 0
+  notify: "Restart jboss"
+  tags: [jboss, config]

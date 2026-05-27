@@ -1,4 +1,12 @@
-# Config Debian MCO
+# --- MODULES DÉPENDANTS (MCO) ---
+LoadModule proxy_module /usr/lib/apache2/modules/mod_proxy.so
+LoadModule proxy_http_module /usr/lib/apache2/modules/mod_proxy_http.so
+LoadModule proxy_balancer_module /usr/lib/apache2/modules/mod_proxy_balancer.so
+LoadModule lbmethod_byrequests_module /usr/lib/apache2/modules/mod_lbmethod_byrequests.so
+LoadModule headers_module /usr/lib/apache2/modules/mod_headers.so
+LoadModule slotmem_shm_module /usr/lib/apache2/modules/mod_slotmem_shm.so
+
+# --- CONFIGURATION DE BASE ---
 ServerName localhost
 DefaultRuntimeDir ${APACHE_RUN_DIR}
 PidFile ${APACHE_PID_FILE}
@@ -9,28 +17,34 @@ KeepAliveTimeout 5
 
 User ${APACHE_RUN_USER}
 Group ${APACHE_RUN_GROUP}
-
 HostnameLookups Off
 ErrorLog ${APACHE_LOG_DIR}/error.log
 LogLevel warn
 
-# --- MODULES ---
-IncludeOptional mods-enabled/*.load
-IncludeOptional mods-enabled/*.conf
-
 # --- RESEAU ---
 Include ports.conf
 
-# --- SECURITE ET ACCES ---
+# --- LOGIQUE DE PROXY (Priorité Haute) ---
+<Proxy balancer://mycluster>
+    {% for host in groups.get('jboss_servers', []) %}
+    BalancerMember http://{{ hostvars[host]['ansible_host'] }}:8080 route={{ host }} retry=1 timeout=5
+    {% endfor %}
+    ProxySet lbmethod=byrequests
+</Proxy>
 
-# 1. On interdit tout par défaut au niveau de la racine système
+# Capture totale du trafic vers le cluster
+ProxyPass / balancer://mycluster/
+ProxyPassReverse / balancer://mycluster/
+
+# Injection du header de traçabilité pour la validation automatisée
+Header add X-Served-By "%{BALANCER_WORKER_ROUTE}e"
+
+# --- SÉCURITÉ ET ACCÈS ---
 <Directory />
     AllowOverride None
     Require all denied
 </Directory>
 
-# 2. On autorise explicitement l'accès au web
-# Note : On met le chemin exact sans slash final pour couvrir le dossier
 DocumentRoot "/var/www/html"
 
 <Directory /var/www/html>
@@ -41,11 +55,5 @@ DocumentRoot "/var/www/html"
 
 # --- LOGIQUE DE CHARGEMENT ---
 AccessFileName .htaccess
-
-# On commente ou supprime ces lignes pour éviter que Debian ne recharge 
-# des fichiers qui bloquent l'accès (comme security.conf ou 000-default.conf)
-# IncludeOptional conf-enabled/*.conf
-# IncludeOptional sites-enabled/*.conf
-
-ProxyPass / http://10.253.190.110:8080/
-ProxyPassReverse / http://10.253.190.110:8080/
+IncludeOptional mods-enabled/*.load
+IncludeOptional mods-enabled/*.conf

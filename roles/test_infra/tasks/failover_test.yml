@@ -1,0 +1,20 @@
+# roles/test_infrastructure/tasks/failover_test.yml
+- name: "Test de basculement (Failover)"
+  block:
+    - name: "Couper app-01"
+      delegate_to: localhost
+      command: "incus stop app-01"
+
+    - name: "Vérifier que le WAF répond toujours (200 OK)"
+      uri:
+        url: "http://localhost/"
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 5
+      delay: 2 # Attendre que le timeout d'Apache se déclenche
+
+  always:
+    - name: "Relancer app-01"
+      delegate_to: localhost
+      command: "incus start app-01"

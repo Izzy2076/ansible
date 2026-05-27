@@ -1,72 +1,91 @@
 ---
+# 1. Installation
 - name: "Installation Apache"
-  apt:
+  ansible.builtin.apt:
     name: "{{ apache_package_name }}"
     state: present
-    update_cache: yes
-  tags: [install]
+    update_cache: true
+  tags:
+    - install
 
-# --- AJOUT ICI : Activation des modules de proxy indispensables ---
-- name: "Activation des modules de Proxy Apache (Requis pour ProxyPass)"
-  shell: "a2enmod proxy proxy_http"
-  register: proxy_modules_enable
-  # Évite de marquer la tâche en "changed" inutilement si c'est déjà actif
-  changed_when: "'already enabled' not in proxy_modules_enable.stdout"
-  tags: [config]
+# 2. Activation des modules nécessaires
+- name: "Activation des modules de Proxy et Load Balancing"
+  community.general.apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - proxy
+    - proxy_http
+    - proxy_balancer
+    - lbmethod_byrequests
+  notify: "Restart apache"
+  tags:
+    - config
 
-- name: "Configuration Apache"
-  template:
+# 3. Configuration via Template
+- name: "Configuration Apache (Dynamic ProxyPass)"
+  ansible.builtin.template:
     src: apache2.conf.j2
     dest: /etc/apache2/apache2.conf
-  notify: restart apache
-  tags: [config]
+    owner: root
+    group: root
+    mode: '0644'
+  notify: "Restart apache"
+  tags:
+    - config
 
-- name: "Supprimer les configurations par défaut polluantes"
-  file:
+# 4. Suppression des fichiers polluants
+- name: "Supprimer les configurations par défaut"
+  ansible.builtin.file:
     path: "/etc/apache2/{{ item }}"
     state: absent
   loop:
     - "sites-enabled/000-default.conf"
     - "conf-enabled/serve-cgi-bin.conf"
-  notify: restart apache
-  tags: [config]
+  notify: "Restart apache"
+  tags:
+    - config
 
-- name: "S'assurer que le répertoire web existe et appartient à www-data"
-  file:
+# 5. Préparation de l'environnement Web
+- name: "S'assurer que le répertoire web existe"
+  ansible.builtin.file:
     path: /var/www/html
     state: directory
     mode: '0755'
     owner: www-data
     group: www-data
-  tags: [config]
+  tags:
+    - config
 
-- name: "Forcer la création d'un index.html propre"
-  copy:
-    content: "<html><body><h1>Site de {{ inventory_hostname }} est en ligne !</h1></body></html>"
-    dest: /var/www/html/index.html
-    owner: www-data
-    group: www-data
-    mode: '0644'
-  tags: [config]
+# 6. Vérification avant redémarrage
+- name: "Vérification de la syntaxe Apache"
+  ansible.builtin.command: apache2ctl configtest
+  changed_when: false
+  tags:
+    - config
 
-# CRITIQUE : Force le redémarrage d'Apache MAINTENANT avant de passer à la suite
-- name: "Appliquer les changements immédiatement"
-  meta: flush_handlers
+# 7. Application immédiate des handlers
+- name: "Appliquer les changements"
+  ansible.builtin.meta: flush_handlers
 
+# 8. Démarrage du service
 - name: "Démarrage et activation du Service"
-  service:
+  ansible.builtin.service:
     name: "{{ apache_service_name }}"
     state: started
-    enabled: yes
-  tags: [service]
+    enabled: true
+  tags:
+    - service
 
-- name: "Vérifier qu'Apache répond localement"
-  uri:
-    url: "http://localhost:{{ apache_listen_port }}"
-    status_code: [200, 503] # <-- ON ACCEPTE LES DEUX CODES ICI
-    timeout: 10
-  register: web_test
-  retries: 3
-  delay: 2
-  until: web_test.status in [200, 503]
-  tags: [test]
+# 9. Validation du routage
+- name: "Vérification : Le WAF répond (200 ou 503)"
+  ansible.builtin.uri:
+    url: "http://localhost:{{ apache_listen_port | default('80') }}"
+    status_code: [200, 503]
+  register: apache_web_test
+  until: apache_web_test.status in [200, 503]
+  retries: 5
+  delay: 3
+  changed_when: false
+  tags:
+    - test

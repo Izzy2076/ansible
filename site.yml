@@ -1,30 +1,65 @@
 ---
-- name: "TIER 1 : Serveurs Web (Frontal)"
-  hosts: apache_servers
-  become: yes
-  roles:
-    - apache
-    - zabbix-agent
+# 1. Préparation globale de l'infrastructure
+- name: "CONFIGURATION DE L'INFRASTRUCTURE"
+  hosts: all
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: "Attendre que les serveurs soient prêts (SSH)"
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        timeout: 60
+  tasks:
+    - name: "Logique globale"
+      ansible.builtin.debug:
+        msg: "Initialisation du déploiement sur {{ inventory_hostname }}"
 
-- name: "TIER 2 : Serveurs d'Application (Métier)"
-  hosts: jboss_servers
-  become: yes
-  roles:
-    - jboss
-    - zabbix-agent
-
-- name: "TIER 3 : Serveur de Base de Données (Data)"
+# 2. TIER 3 : Base de données
+- name: "TIER 3 : Serveur de Base de Données"
   hosts: dbservers
-  become: yes
+  become: true
   roles:
     - mariadb
     - zabbix-agent
 
-# ==========================================
-# TIER SECURITY : Pare-feu Applicatif (WAF)
-# ==========================================
-- name: "DÉPLOIEMENT : Configuration du WAF Ubika"
-  hosts: localhost # C'est localhost (ton WSL) qui va envoyer la requête API
-  gather_facts: no
+# 3. TIER 2 : Serveurs d'Application
+- name: "TIER 2 : Serveurs d'Application"
+  hosts: jboss_servers
+  become: true
+  roles:
+    - jboss
+    - zabbix-agent
+
+# 4. TIER 1 : Serveurs Web / Front-end
+- name: "TIER 1 : Serveurs Web"
+  hosts: apache_servers
+  become: true
+  roles:
+    - apache
+    - zabbix-agent
+
+# 5. TIER SECURITY : WAF (avec validation intégrée)
+- name: "DÉPLOIEMENT : Configuration du WAF"
+  hosts: waf_servers
+  become: true
+  gather_facts: true
   roles:
     - ubika
+  post_tasks:
+    - name: "CONTRÔLE QUALITÉ : Validation de l'infrastructure WAF"
+      ansible.builtin.include_tasks: "roles/test_infra/tasks/{{ item }}"
+      loop:
+        - load_balancer_test.yml
+        - failover_test.yml
+      tags:
+        - validation
+
+# 6. VALIDATION FINALE
+- name: "VALIDATION : Rapport de fin"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: "Affichage du statut final"
+      ansible.builtin.debug:
+        msg: "Déploiement et tests de validation terminés avec succès."
